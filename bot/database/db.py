@@ -1,11 +1,46 @@
+import logging
 from datetime import datetime
+from pathlib import Path
 from typing import AsyncGenerator, Dict, List, Optional, Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from bot.config import config
 from bot.database.models import Base, CourseTariff, Order, User
 
-DATABASE_URL = f"sqlite+aiosqlite:///{config.DB_NAME}"
+logger = logging.getLogger(__name__)
+
+
+def get_database_url() -> str:
+    """Определяет безопасный и доступный путь для файла базы данных SQLite."""
+    raw_path = config.DB_NAME.strip() if config.DB_NAME else "bot_database.db"
+    db_path = Path(raw_path)
+
+    if not db_path.is_absolute():
+        db_path = Path.cwd() / db_path
+
+    try:
+        # Пытаемся создать родительскую директорию и проверить права на запись
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        test_file = db_path.parent / ".perm_check"
+        test_file.touch()
+        test_file.unlink()
+    except (PermissionError, OSError) as e:
+        logger.warning(
+            "Нет доступа на запись в %s (%s). Переключаемся на домашнюю директорию.",
+            db_path.parent, e
+        )
+        try:
+            fallback_dir = Path.home() / "bot_data"
+            fallback_dir.mkdir(parents=True, exist_ok=True)
+            db_path = fallback_dir / db_path.name
+        except (PermissionError, OSError):
+            db_path = Path("/tmp") / db_path.name
+
+    logger.info("Используется путь к базе данных SQLite: %s", db_path)
+    return f"sqlite+aiosqlite:///{db_path.as_posix()}"
+
+
+DATABASE_URL = get_database_url()
 
 engine = create_async_engine(
     DATABASE_URL,
