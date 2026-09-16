@@ -1,0 +1,32 @@
+# Секретные файлы и переменные окружения
+.env
+.env.local
+.env.*.local
+
+# База данных SQLite (содержит персональные данные учеников)
+*.db
+*.sqlite
+*.sqlite3
+bot_database.db
+
+# Экспортированные отчеты
+*.xlsx
+*.csv
+
+# Python кэш и байткод
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Виртуальное окружение
+venv/
+.venv/
+env/
+ENV/
+
+# Настройки IDE
+.vscode/
+.idea/
+*.swp
+*.swo
