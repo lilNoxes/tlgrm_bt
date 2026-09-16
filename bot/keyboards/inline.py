@@ -56,10 +56,15 @@ def get_course_access_keyboard(invite_link: str) -> InlineKeyboardMarkup:
 
 
 def get_admin_panel_keyboard() -> InlineKeyboardMarkup:
-    """Кнопки панели администратора."""
+    """Кнопки панели администратора с возможностями выгрузки."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📊 Обновить статистику", callback_data="admin_refresh_stats")],
-            [InlineKeyboardButton(text="📥 Скачать базу учеников (.xlsx)", callback_data="admin_export_excel")]
+            [InlineKeyboardButton(text="📥 Полный отчёт (все вкладки в 1 файле)", callback_data="admin_export_full")],
+            [
+                InlineKeyboardButton(text="🟢 Оплатившие", callback_data="admin_export_paid"),
+                InlineKeyboardButton(text="🟡 Лиды без оплаты", callback_data="admin_export_unpaid")
+            ],
+            [InlineKeyboardButton(text="👥 Все пользователи бота", callback_data="admin_export_all")]
         ]
     )

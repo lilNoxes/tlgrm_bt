@@ -229,17 +229,29 @@ async def user_has_paid_order(user_id: int) -> bool:
 
 
 async def get_admin_stats() -> Dict[str, Any]:
-    """Собрать статистику для администратора."""
+    """Собрать расширенную статистику для администратора."""
     async with AsyncSessionLocal() as session:
-        # Всего пользователей
+        # Всего пользователей в боте
         users_count = (await session.execute(select(func.count(User.id)))).scalar_one()
 
-        # Пользователей с заполненными контактами (зарегистрированных)
+        # Зарегистрированных (заполнили ФИО, телефон, email)
         registered_count = (await session.execute(
             select(func.count(User.id)).where(User.phone.isnot(None), User.email.isnot(None))
         )).scalar_one()
 
-        # Оплаченных заказов
+        # Число уникальных пользователей, оплативших хотя бы один курс
+        paid_subquery = select(Order.user_id).where(Order.status == "paid").distinct()
+        paid_users_count = (await session.execute(
+            select(func.count(User.id)).where(User.id.in_(paid_subquery))
+        )).scalar_one()
+
+        # Лиды: оставили контакты, но ещё не оплатили
+        unpaid_leads_count = max(0, registered_count - paid_users_count)
+
+        # Новые пользователи (только зашли, ещё не заполнили контакты)
+        new_users_count = max(0, users_count - registered_count)
+
+        # Оплаченных заказов всего
         paid_orders_count = (await session.execute(
             select(func.count(Order.id)).where(Order.status == "paid")
         )).scalar_one()
@@ -252,6 +264,9 @@ async def get_admin_stats() -> Dict[str, Any]:
         return {
             "total_users": users_count,
             "registered_users": registered_count,
+            "paid_users": paid_users_count,
+            "unpaid_leads": unpaid_leads_count,
+            "new_users": new_users_count,
             "paid_orders": paid_orders_count,
             "total_income": total_income,
         }
@@ -283,5 +298,68 @@ async def get_paid_students_data() -> List[Dict[str, Any]]:
                 "tariff_title": tariff.title,
                 "amount_rub": order.amount,
                 "provider_charge_id": order.provider_payment_charge_id or "-"
+            })
+        return data
+
+
+async def get_unpaid_leads_data() -> List[Dict[str, Any]]:
+    """Получить данные пользователей, которые заполнили контакты, но еще не оплатили курс."""
+    async with AsyncSessionLocal() as session:
+        paid_subquery = select(Order.user_id).where(Order.status == "paid").distinct()
+        query = (
+            select(User)
+            .where(
+                User.phone.isnot(None),
+                User.email.isnot(None),
+                User.id.not_in(paid_subquery)
+            )
+            .order_by(User.created_at.desc())
+        )
+        result = await session.execute(query)
+        users = result.scalars().all()
+
+        data = []
+        for u in users:
+            data.append({
+                "telegram_id": u.telegram_id,
+                "username": f"@{u.username}" if u.username else "Нет",
+                "full_name": u.full_name or "Не указано",
+                "phone": u.phone or "Не указан",
+                "email": u.email or "Не указан",
+                "registered_at": u.created_at.strftime("%Y-%m-%d %H:%M:%S") if u.created_at else "-",
+            })
+        return data
+
+
+async def get_all_users_data() -> List[Dict[str, Any]]:
+    """Получить данные всех пользователей бота (включая новых, без контактов)."""
+    async with AsyncSessionLocal() as session:
+        paid_subquery = select(Order.user_id).where(Order.status == "paid").distinct()
+        paid_res = await session.execute(paid_subquery)
+        paid_user_ids = set(paid_res.scalars().all())
+
+        result = await session.execute(select(User).order_by(User.created_at.desc()))
+        users = result.scalars().all()
+
+        data = []
+        for u in users:
+            has_contacts = bool(u.phone and u.email)
+            has_paid = u.id in paid_user_ids
+
+            if has_paid:
+                status_label = "🟢 Оплатил"
+            elif has_contacts:
+                status_label = "🟡 Зарегистрирован (без оплаты)"
+            else:
+                status_label = "⚪️ Новый (без контактов)"
+
+            data.append({
+                "telegram_id": u.telegram_id,
+                "username": f"@{u.username}" if u.username else "Нет",
+                "full_name": u.full_name or "Не заполнил",
+                "phone": u.phone or "—",
+                "email": u.email or "—",
+                "status": status_label,
+                "first_seen": u.created_at.strftime("%Y-%m-%d %H:%M:%S") if u.created_at else "-",
             })
         return data
