@@ -94,15 +94,20 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
     async with AsyncSessionLocal() as session:
-        # Проверяем наличие тарифов
-        result = await session.execute(select(func.count(CourseTariff.id)))
-        count = result.scalar_one()
-
-        if count == 0:
-            for t_data in DEFAULT_TARIFFS:
-                tariff = CourseTariff(**t_data)
-                session.add(tariff)
-            await session.commit()
+        # Синхронизируем тарифы: добавляем новые или обновляем существующие цены и описания
+        for t_data in DEFAULT_TARIFFS:
+            result = await session.execute(
+                select(CourseTariff).where(CourseTariff.code == t_data["code"])
+            )
+            tariff = result.scalar_one_or_none()
+            if tariff:
+                tariff.title = t_data["title"]
+                tariff.description = t_data["description"]
+                tariff.price_rub = t_data["price_rub"]
+                tariff.is_active = t_data.get("is_active", True)
+            else:
+                session.add(CourseTariff(**t_data))
+        await session.commit()
 
 
 async def get_or_create_user(telegram_id: int, username: Optional[str] = None, full_name: Optional[str] = None) -> User:
