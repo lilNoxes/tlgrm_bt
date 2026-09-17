@@ -5,6 +5,8 @@
 
 # База данных SQLite (содержит персональные данные учеников)
 *.db
+*.db.*
+*.db-*
 *.sqlite
 *.sqlite3
 bot_database.db
@@ -25,8 +27,10 @@ venv/
 env/
 ENV/
 
-# Настройки IDE
+# Настройки IDE и локальные правила агентов
 .vscode/
 .idea/
 *.swp
 *.swo
+AGENTS.md
+GEMINI.md

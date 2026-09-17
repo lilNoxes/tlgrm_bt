@@ -244,38 +244,62 @@ async def process_successful_payment(message: Message, bot: Bot):
     tariff = await get_tariff_by_id(order.tariff_id) if order else None
     tariff_title = tariff.title if tariff else "Курс"
 
-    # Сообщение ученику
+    # Генерация персональной ссылки на канал (если задан CHANNEL_ID и бот админ)
+    invite_link = config.CHANNEL_INVITE_LINK
+    if config.CHANNEL_ID:
+        try:
+            student_label = f"Ученик {message.from_user.id}"
+            if user and user.full_name:
+                student_label += f" ({user.full_name[:15]})"
+            link_obj = await bot.create_chat_invite_link(
+                chat_id=config.CHANNEL_ID,
+                name=student_label,
+                member_limit=1
+            )
+            invite_link = link_obj.invite_link
+            logger.info("Создан одноразовый инвайт для %s: %s", message.from_user.id, invite_link)
+        except Exception as e:
+            logger.warning(
+                "Не удалось создать одноразовый инвайт в канале %s (%s). Используется статическая ссылка.",
+                config.CHANNEL_ID, e
+            )
+
+    # 1. Сначала обновляем главное меню пользователя
+    await message.answer(
+        "✅ <b>Оплата принята! Главное меню обновлено.</b>",
+        reply_markup=get_main_menu_keyboard(is_registered=True, has_access=True),
+        parse_mode="HTML"
+    )
+
+    # 2. Главное поздравительное сообщение с кнопкой перехода в канал (остается последним перед глазами)
     congrats_text = (
         "🎉🎉🎉 <b>ОПЛАТА УСПЕШНО ПРОШЛА!</b>\n\n"
         f"Поздравляем, <b>{user.full_name if user else message.from_user.first_name}</b>!\n"
         f"Вы успешно зачислены на курс по тарифу: <b>«{tariff_title}»</b>.\n\n"
         f"💳 Сумма оплаты: <b>{order.amount if order else payment.total_amount // 100} ₽</b>\n"
         f"🧾 Чек отправлен на ваш email: <code>{user.email if user else 'указанный при оплате'}</code>\n\n"
-        "👉 Нажмите на кнопку ниже, чтобы присоединиться к закрытому каналу курса и начать обучение:"
+        "👉 <b>Нажмите на кнопку ниже, чтобы войти в закрытый канал курса и начать обучение:</b>"
     )
 
     await message.answer(
         congrats_text,
-        reply_markup=get_course_access_keyboard(config.CHANNEL_INVITE_LINK),
+        reply_markup=get_course_access_keyboard(invite_link),
         parse_mode="HTML"
     )
 
-    # Обновляем главное меню для ученика (появится кнопка "Материалы курса")
-    await message.answer(
-        "Главное меню обновлено:",
-        reply_markup=get_main_menu_keyboard(is_registered=True, has_access=True)
-    )
+    # 3. Уведомление администраторов с быстрой ссылкой на профиль ученика
+    user_mention = f"<a href=\"tg://user?id={message.from_user.id}\">{user.full_name if user else message.from_user.first_name}</a>"
+    username_str = f"@{message.from_user.username}" if message.from_user.username else "отсутствует"
 
-    # Уведомление администраторов
     admin_notify_text = (
         "🔥 <b>НОВАЯ ОПЛАТА КУРСА!</b>\n\n"
         f"• <b>Заказ №:</b> {order_id}\n"
         f"• <b>Тариф:</b> {tariff_title}\n"
         f"• <b>Сумма:</b> {order.amount if order else payment.total_amount // 100} ₽\n"
-        f"• <b>Ученик:</b> {user.full_name if user else 'Не указано'}\n"
+        f"• <b>Ученик:</b> {user_mention}\n"
         f"• <b>Телефон:</b> {user.phone if user else 'Не указан'}\n"
         f"• <b>Email:</b> {user.email if user else 'Не указан'}\n"
-        f"• <b>Telegram:</b> @{message.from_user.username or 'отсутствует'} (ID: <code>{message.from_user.id}</code>)\n"
+        f"• <b>Telegram:</b> {username_str} (ID: <code>{message.from_user.id}</code>)\n"
         f"• <b>ID ЮKassa:</b> <code>{provider_charge_id}</code>"
     )
 

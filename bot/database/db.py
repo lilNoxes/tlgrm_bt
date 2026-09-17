@@ -42,11 +42,23 @@ def get_database_url() -> str:
 
 DATABASE_URL = get_database_url()
 
+from sqlalchemy import event, func, select
+
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,
     future=True
 )
+
+
+@event.listens_for(engine.sync_engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """Настройка WAL-режима и тайм-аута ожидания блокировок для защиты от database is locked."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.close()
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,

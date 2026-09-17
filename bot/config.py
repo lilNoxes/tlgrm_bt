@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     PAYMENT_PROVIDER_TOKEN: str = ""
     ADMIN_IDS: str = ""
     CHANNEL_INVITE_LINK: str = "https://t.me/"
+    CHANNEL_ID: str = ""
     DB_NAME: str = "bot_database.db"
     PROXY_URL: str = ""
 

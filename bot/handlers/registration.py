@@ -50,11 +50,40 @@ async def start_registration(event: Message | CallbackQuery, state: FSMContext):
         await event.answer(text, reply_markup=get_cancel_registration_keyboard(), parse_mode="HTML")
 
 
+MENU_COMMANDS_AND_BUTTONS = {
+    "🎓 Выбрать тариф и оплатить",
+    "ℹ️ О курсе",
+    "👤 Мой профиль",
+    "💬 Служба заботы / Помощь",
+    "🎓 Материалы курса / Канал",
+}
+
+
 @router.message(RegistrationStates.waiting_for_name)
 async def process_name(message: Message, state: FSMContext):
     """Обработка ввода ФИО."""
-    full_name = message.text.strip() if message.text else ""
+    if not message.text:
+        await message.answer("⚠️ Пожалуйста, введите ваше имя текстом:", reply_markup=get_cancel_registration_keyboard())
+        return
 
+    text = message.text.strip()
+
+    # Если пользователь нажал кнопку меню или отправил команду
+    if text.startswith("/") or text in MENU_COMMANDS_AND_BUTTONS:
+        if text == "/cancel":
+            await state.clear()
+            await message.answer("❌ Регистрация отменена.", reply_markup=get_main_menu_keyboard())
+            return
+        await message.answer(
+            "⚠️ Вы находитесь на этапе регистрации.\n"
+            "Пожалуйста, введите ваши настоящие имя и фамилию (например, <i>Екатерина Смирнова</i>) "
+            "или нажмите /cancel для отмены.",
+            reply_markup=get_cancel_registration_keyboard(),
+            parse_mode="HTML"
+        )
+        return
+
+    full_name = text
     if len(full_name) < 2 or len(full_name) > 100:
         await message.answer(
             "⚠️ Пожалуйста, введите корректное имя (от 2 до 100 символов):",
@@ -65,12 +94,12 @@ async def process_name(message: Message, state: FSMContext):
     await state.update_data(full_name=full_name)
     await state.set_state(RegistrationStates.waiting_for_phone)
 
-    text = (
+    msg_text = (
         f"Отлично, <b>{full_name}</b>!\n\n"
         "📱 <b>Шаг 2 из 3: Номер телефона</b>\n\n"
         "Нажмите кнопку <b>«Отправить мой номер телефона»</b> ниже или введите его вручную в формате <code>+79991234567</code>:"
     )
-    await message.answer(text, reply_markup=get_phone_keyboard(), parse_mode="HTML")
+    await message.answer(msg_text, reply_markup=get_phone_keyboard(), parse_mode="HTML")
 
 
 @router.message(RegistrationStates.waiting_for_phone)
@@ -116,7 +145,26 @@ async def process_phone(message: Message, state: FSMContext):
 @router.message(RegistrationStates.waiting_for_email)
 async def process_email(message: Message, state: FSMContext):
     """Обработка ввода email и завершение регистрации."""
-    email = message.text.strip() if message.text else ""
+    if not message.text:
+        await message.answer("⚠️ Пожалуйста, введите ваш email текстом:")
+        return
+
+    text = message.text.strip()
+
+    if text.startswith("/") or text in MENU_COMMANDS_AND_BUTTONS:
+        if text == "/cancel":
+            await state.clear()
+            await message.answer("❌ Регистрация отменена.", reply_markup=get_main_menu_keyboard())
+            return
+        await message.answer(
+            "⚠️ Вы находитесь на этапе ввода Email.\n"
+            "Пожалуйста, введите действующий адрес почты (например, <i>ivanova@gmail.com</i>) "
+            "или отправьте /cancel для отмены.",
+            parse_mode="HTML"
+        )
+        return
+
+    email = text
 
     if not EMAIL_REGEX.match(email):
         await message.answer(
