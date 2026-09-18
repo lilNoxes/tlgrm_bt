@@ -114,7 +114,7 @@ async def cmd_profile(message: Message):
         await message.answer(text, parse_mode="HTML")
 
 
-@router.message(F.text == "💬 Служба заботы / Помощь")
+@router.message(F.text.in_({"💬 Служба заботы и поддержки", "💬 Служба заботы / Помощь"}))
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     """Справка и контакты поддержки."""
@@ -126,19 +126,19 @@ async def cmd_help(message: Message):
     text = (
         "💬 <b>Служба заботы и поддержки</b>\n\n"
         "Если у вас возникли вопросы по оплате, программе курса или доступу к материалам — мы с радостью вам поможем!\n\n"
-        "• Время ответа: ежедневно с 09:00 до 21:00 МСК\n"
+        "• Время ответа: ежедневно с 09:00 до 21:00 НСК\n"
     )
 
     reply_markup = None
     if clean_username:
-        text += f"• Контакт куратора / поддержки: @{clean_username}\n"
+        text += f"• Для связи напишите организаторам курса: @{clean_username}\n"
         reply_markup = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="💬 Написать в поддержку", url=f"https://t.me/{clean_username}")]
+                [InlineKeyboardButton(text="💬 Написать организаторам", url=f"https://t.me/{clean_username}")]
             ]
         )
     else:
-        text += "• Для связи напишите организаторам курса или в закрытый чат.\n"
+        text += "• Для связи напишите организаторам курса.\n"
 
     await message.answer(text, reply_markup=reply_markup, parse_mode="HTML")
 
