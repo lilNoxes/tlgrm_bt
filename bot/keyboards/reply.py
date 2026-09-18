@@ -2,10 +2,11 @@ from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemo
 
 
 def get_phone_keyboard() -> ReplyKeyboardMarkup:
-    """Клавиатура с кнопкой отправки номера телефона."""
+    """Клавиатура с кнопкой отправки номера телефона и кнопкой отмены."""
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📱 Отправить мой номер телефона", request_contact=True)]
+            [KeyboardButton(text="📱 Отправить мой номер телефона", request_contact=True)],
+            [KeyboardButton(text="❌ Отменить регистрацию")]
         ],
         resize_keyboard=True,
         one_time_keyboard=True

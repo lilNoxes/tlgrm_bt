@@ -72,12 +72,20 @@ async def view_tariff_detail(callback: CallbackQuery):
         return
 
     formatted_price = f"{tariff.price_rub:,}".replace(",", " ")
+    clean_sup = config.SUPPORT_USERNAME.strip().lstrip("@") if config.SUPPORT_USERNAME else ""
+    sup_note = ""
+    if clean_sup:
+        sup_note = (
+            f"\n\n💬 <i>Нужна рассрочка, счёт для юрлица или возникли вопросы по программе? "
+            f"Напишите нашему куратору @{clean_sup}, и мы с радостью поможем!</i>"
+        )
+
     text = (
         f"🎓 <b>{tariff.title}</b>\n\n"
         f"<b>Что входит в программу:</b>\n"
         f"{tariff.description or 'Подробная информация уточняется.'}\n\n"
         f"💰 <b>Стоимость:</b> {formatted_price} ₽\n\n"
-        "<i>Для перехода к безопасной оплате нажмите кнопку «Оплатить» ниже.</i>"
+        f"<i>Для перехода к безопасной оплате нажмите кнопку «Оплатить» ниже.</i>{sup_note}"
     )
 
     await callback.message.edit_text(
@@ -198,11 +206,18 @@ async def buy_tariff(callback: CallbackQuery, bot: Bot):
             start_parameter=f"pay_tariff_{tariff.id}",
             provider_data=json.dumps(receipt_data)
         )
+        if clean_sup:
+            await callback.message.answer(
+                f"💬 <i>Если при оплате картой возникнут трудности или вам удобен другой способ расчёта (перевод, СБП, счёт) — "
+                f"напишите нашему куратору @{clean_sup}, мы с радостью поможем завершить оформление вручную!</i>",
+                parse_mode="HTML"
+            )
     except Exception as e:
         logger.exception("Ошибка при отправке инвойса ЮKassa: %s", e)
+        care = f" Напишите нашему куратору: @{clean_sup}" if clean_sup else ""
         await callback.message.answer(
-            f"❌ Не удалось сформировать счет на оплату: {e}\n"
-            "Пожалуйста, обратитесь к администратору или проверьте настройки токена ЮKassa."
+            f"❌ Не удалось сформировать счет на оплату.{care}\n"
+            "Пожалуйста, обратитесь в службу заботы."
         )
 
 

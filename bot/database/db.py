@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncGenerator, Dict, List, Optional, Any
+from typing import AsyncGenerator, Dict, List, Optional, Any, Tuple
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from bot.config import config
@@ -398,3 +398,129 @@ async def get_broadcast_recipients(target: str) -> List[int]:
 
         result = await session.execute(query)
         return list(result.scalars().all())
+
+
+async def find_user_by_query(query: str) -> Optional[User]:
+    """Поиск пользователя по Telegram ID, username, номеру телефона или имени."""
+    q = query.strip()
+    if not q:
+        return None
+
+    async with AsyncSessionLocal() as session:
+        # 1. Если передано число — ищем по telegram_id или внутреннему id
+        if q.isdigit():
+            user_id_num = int(q)
+            res = await session.execute(
+                select(User).where((User.telegram_id == user_id_num) | (User.id == user_id_num))
+            )
+            user = res.scalar_one_or_none()
+            if user:
+                return user
+
+        # 2. Поиск по username (с @ или без)
+        clean_username = q.lstrip("@").lower()
+        res = await session.execute(
+            select(User).where(func.lower(User.username) == clean_username)
+        )
+        user = res.scalar_one_or_none()
+        if user:
+            return user
+
+        # 3. Поиск по телефону (очищаем от спецсимволов)
+        phone_digits = "".join(filter(str.isdigit, q))
+        if len(phone_digits) >= 7:
+            # Ищем подстроку из цифр телефона
+            res = await session.execute(
+                select(User).where(User.phone.like(f"%{phone_digits[-10:]}%"))
+            )
+            user = res.scalar_one_or_none()
+            if user:
+                return user
+
+        # 4. Поиск по имени / фамилии (регистронезависимый поиск)
+        res = await session.execute(
+            select(User).where(User.full_name.ilike(f"%{q}%"))
+        )
+        return res.scalars().first()
+
+
+async def get_user_orders_info(user_id: int) -> List[Dict[str, Any]]:
+    """Получить историю заказов пользователя с названиями тарифов."""
+    async with AsyncSessionLocal() as session:
+        query = (
+            select(Order, CourseTariff)
+            .join(CourseTariff, Order.tariff_id == CourseTariff.id)
+            .where(Order.user_id == user_id)
+            .order_by(Order.created_at.desc())
+        )
+        res = await session.execute(query)
+        rows = res.all()
+
+        orders_data = []
+        for order, tariff in rows:
+            orders_data.append({
+                "id": order.id,
+                "tariff_title": tariff.title,
+                "amount": order.amount,
+                "status": order.status,
+                "created_at": order.created_at,
+                "paid_at": order.paid_at,
+                "charge_id": order.telegram_payment_charge_id or "—"
+            })
+        return orders_data
+
+
+async def grant_manual_access(user_id: int, tariff_id: int, admin_tg_id: int) -> Tuple[Order, CourseTariff]:
+    """Вручную выдать пользователю доступ к курсу (создать/подтвердить оплаченный заказ)."""
+    async with AsyncSessionLocal() as session:
+        # Находим тариф
+        tariff_res = await session.execute(select(CourseTariff).where(CourseTariff.id == tariff_id))
+        tariff = tariff_res.scalar_one_or_none()
+        if not tariff:
+            raise ValueError(f"Тариф с ID {tariff_id} не найден.")
+
+        # Ищем существующий заказ со статусом pending для этого тарифа
+        order_res = await session.execute(
+            select(Order).where(
+                Order.user_id == user_id,
+                Order.tariff_id == tariff_id,
+                Order.status == "pending"
+            ).order_by(Order.created_at.desc())
+        )
+        order = order_res.scalars().first()
+
+        now = datetime.utcnow()
+        if not order:
+            order = Order(
+                user_id=user_id,
+                tariff_id=tariff_id,
+                amount=tariff.price_rub,
+                status="paid",
+                telegram_payment_charge_id=f"MANUAL_ADMIN_{admin_tg_id}",
+                paid_at=now
+            )
+            session.add(order)
+        else:
+            order.status = "paid"
+            order.telegram_payment_charge_id = f"MANUAL_ADMIN_{admin_tg_id}"
+            order.paid_at = now
+
+        await session.commit()
+        await session.refresh(order)
+        return order, tariff
+
+
+async def revoke_user_access(user_id: int) -> int:
+    """Отозвать активный доступ у пользователя (перевести оплаченные заказы в статус revoked)."""
+    async with AsyncSessionLocal() as session:
+        order_res = await session.execute(
+            select(Order).where(Order.user_id == user_id, Order.status == "paid")
+        )
+        orders = order_res.scalars().all()
+        count = len(orders)
+        for order in orders:
+            order.status = "revoked"
+
+        await session.commit()
+        return count
+

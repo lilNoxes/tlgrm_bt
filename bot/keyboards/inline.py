@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from bot.database.models import CourseTariff
 
@@ -55,11 +55,21 @@ def get_course_access_keyboard(invite_link: str) -> InlineKeyboardMarkup:
     )
 
 
+def get_cancel_email_keyboard() -> InlineKeyboardMarkup:
+    """Кнопка отмены на этапе ввода Email."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отменить регистрацию", callback_data="cancel_registration")]
+        ]
+    )
+
+
 def get_admin_panel_keyboard() -> InlineKeyboardMarkup:
-    """Кнопки панели администратора с возможностями выгрузки и рассылки."""
+    """Кнопки панели администратора с возможностями выгрузки, рассылки и управления учениками."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📊 Обновить статистику", callback_data="admin_refresh_stats")],
+            [InlineKeyboardButton(text="🔍 Найти ученика / Управление доступом", callback_data="admin_search_user")],
             [InlineKeyboardButton(text="📢 Сделать рассылку по базе", callback_data="admin_start_broadcast")],
             [InlineKeyboardButton(text="📥 Полный отчёт (все вкладки в 1 файле)", callback_data="admin_export_full")],
             [
@@ -69,6 +79,48 @@ def get_admin_panel_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="👥 Все пользователи бота", callback_data="admin_export_all")]
         ]
     )
+
+
+def get_cancel_search_user_keyboard() -> InlineKeyboardMarkup:
+    """Кнопка отмены поиска пользователя."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена / Назад в меню", callback_data="admin_back_to_panel")]
+        ]
+    )
+
+
+def get_user_manage_keyboard(user_id: int, has_paid: bool, username: Optional[str] = None) -> InlineKeyboardMarkup:
+    """Кнопки действий с конкретным учеником в админке."""
+    buttons = []
+    # Кнопка ручной выдачи доступа
+    buttons.append([InlineKeyboardButton(text="🟢 Выдать доступ вручную (Оплатил)", callback_data=f"admin_grant_user:{user_id}")])
+
+    # Если доступ уже активен — кнопка отзыва
+    if has_paid:
+        buttons.append([InlineKeyboardButton(text="🔴 Отозвать доступ к курсу", callback_data=f"admin_revoke_user:{user_id}")])
+
+    # Ссылка на личные сообщения в Telegram
+    clean_username = username.lstrip("@") if username else ""
+    if clean_username:
+        buttons.append([InlineKeyboardButton(text="💬 Написать ученику в Telegram", url=f"https://t.me/{clean_username}")])
+
+    buttons.append([InlineKeyboardButton(text="⬅️ Назад в панель админа", callback_data="admin_back_to_panel")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_tariffs_for_manual_grant_keyboard(tariffs: List[CourseTariff], user_id: int) -> InlineKeyboardMarkup:
+    """Клавиатура выбора тарифа для ручной активации доступа."""
+    buttons = []
+    for tariff in tariffs:
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"{tariff.title} ({tariff.price_rub} ₽)",
+                callback_data=f"admin_do_grant:{user_id}:{tariff.id}"
+            )
+        ])
+    buttons.append([InlineKeyboardButton(text="⬅️ Отмена", callback_data=f"admin_view_user:{user_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def get_broadcast_audience_keyboard() -> InlineKeyboardMarkup:
@@ -91,3 +143,4 @@ def get_broadcast_confirm_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="❌ Отменить рассылку", callback_data="broadcast_cancel")]
         ]
     )
+

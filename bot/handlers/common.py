@@ -1,5 +1,6 @@
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from bot.config import config
 from bot.database.db import get_or_create_user, get_user_by_tg_id, user_has_paid_order
@@ -10,8 +11,9 @@ router = Router()
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message):
-    """Обработка команды /start."""
+async def cmd_start(message: Message, state: FSMContext):
+    """Обработка команды /start с обязательным сбросом зависших FSM состояний."""
+    await state.clear()
     telegram_id = message.from_user.id
     username = message.from_user.username
     tg_full_name = message.from_user.full_name
