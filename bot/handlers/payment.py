@@ -87,9 +87,11 @@ async def view_tariff_detail(callback: CallbackQuery):
     )
 
 
-@router.callback_query(F.data.startswith("buy_tariff:"))
+@router.callback_query(F.data.startswith("buy_tariff:") | F.data.startswith("confirm_buy_tariff:"))
 async def buy_tariff(callback: CallbackQuery, bot: Bot):
     """Формирование и отправка счета на оплату через ЮKassa."""
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
     await callback.answer()
     try:
         tariff_id = int(callback.data.split(":")[1])
@@ -111,6 +113,25 @@ async def buy_tariff(callback: CallbackQuery, bot: Bot):
         await callback.message.answer("Тариф не найден.")
         return
 
+    # Защита от случайной повторной оплаты курса
+    has_paid = await user_has_paid_order(user.id)
+    is_confirmed = callback.data.startswith("confirm_buy_tariff:")
+
+    if has_paid and not is_confirmed:
+        confirm_keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Да, оплатить повторно", callback_data=f"confirm_buy_tariff:{tariff.id}")],
+                [InlineKeyboardButton(text="⬅️ Отмена / Назад", callback_data="show_all_tariffs")]
+            ]
+        )
+        await callback.message.answer(
+            "⚠️ <b>Внимание: вы уже являетесь участником курса!</b>\n\n"
+            f"У вас уже активирован оплаченный доступ. Вы действительно хотите оформить покупку по тарифу «{tariff.title}» повторно?",
+            reply_markup=confirm_keyboard,
+            parse_mode="HTML"
+        )
+        return
+
     if not config.PAYMENT_PROVIDER_TOKEN or "YOUR_" in config.PAYMENT_PROVIDER_TOKEN:
         await callback.message.answer(
             "⚠️ <b>Платежная система временно настраивается администратором.</b>\n"
@@ -122,6 +143,17 @@ async def buy_tariff(callback: CallbackQuery, bot: Bot):
 
     # Создаем заказ в базе данных
     order = await create_order(user_id=user.id, tariff_id=tariff.id, amount=tariff.price_rub)
+
+    # Нормализация телефона в формат E.164 (+7XXXXXXXXXX) для чека ЮKassa
+    clean_digits = "".join(filter(str.isdigit, user.phone or ""))
+    if len(clean_digits) == 11 and clean_digits.startswith("8"):
+        normalized_phone = f"+7{clean_digits[1:]}"
+    elif len(clean_digits) == 11 and clean_digits.startswith("7"):
+        normalized_phone = f"+{clean_digits}"
+    elif user.phone and user.phone.startswith("+"):
+        normalized_phone = user.phone
+    else:
+        normalized_phone = f"+{clean_digits}" if clean_digits else "+79990000000"
 
     # Формируем чек для 54-ФЗ (передается в ЮKassa через provider_data)
     receipt_data = {
@@ -139,7 +171,7 @@ async def buy_tariff(callback: CallbackQuery, bot: Bot):
             ],
             "customer": {
                 "email": user.email,
-                "phone": user.phone
+                "phone": normalized_phone
             }
         }
     }

@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     ADMIN_IDS: str = ""
     CHANNEL_INVITE_LINK: str = "https://t.me/"
     CHANNEL_ID: str = ""
+    SUPPORT_USERNAME: str = ""
     DB_NAME: str = "bot_database.db"
     PROXY_URL: str = ""
 

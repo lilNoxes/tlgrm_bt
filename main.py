@@ -71,8 +71,8 @@ async def main() -> None:
         await set_bot_commands(bot)
 
         logger.info("Бот запускается в режиме Polling...")
-        # Удаляем вебхуки и накопившиеся апдейты для чистого старта
-        await bot.delete_webhook(drop_pending_updates=True)
+        # Не сбрасываем апдейты (drop_pending_updates=False), чтобы не потерять подтверждения оплат при перезапуске
+        await bot.delete_webhook(drop_pending_updates=False)
 
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     except TelegramNetworkError as e:

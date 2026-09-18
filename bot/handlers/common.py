@@ -116,14 +116,29 @@ async def cmd_profile(message: Message):
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     """Справка и контакты поддержки."""
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    support_contact = config.SUPPORT_USERNAME.strip() if config.SUPPORT_USERNAME else ""
+    clean_username = support_contact.lstrip("@")
+
     text = (
         "💬 <b>Служба заботы и поддержки</b>\n\n"
-        "Если у вас возникли вопросы по оплате, программе курса или доступу к материалам:\n\n"
-        "• Напишите администратору: @support\n"
-        "• Время ответа: ежедневно с 09:00 до 21:00 МСК\n\n"
-        "Мы всегда рады помочь вам!"
+        "Если у вас возникли вопросы по оплате, программе курса или доступу к материалам — мы с радостью вам поможем!\n\n"
+        "• Время ответа: ежедневно с 09:00 до 21:00 МСК\n"
     )
-    await message.answer(text, parse_mode="HTML")
+
+    reply_markup = None
+    if clean_username:
+        text += f"• Контакт куратора / поддержки: @{clean_username}\n"
+        reply_markup = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💬 Написать в поддержку", url=f"https://t.me/{clean_username}")]
+            ]
+        )
+    else:
+        text += "• Для связи напишите организаторам курса или в закрытый чат.\n"
+
+    await message.answer(text, reply_markup=reply_markup, parse_mode="HTML")
 
 
 @router.message(F.text == "🎓 Материалы курса / Канал")

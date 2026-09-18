@@ -375,3 +375,26 @@ async def get_all_users_data() -> List[Dict[str, Any]]:
                 "first_seen": u.created_at.strftime("%Y-%m-%d %H:%M:%S") if u.created_at else "-",
             })
         return data
+
+
+async def get_broadcast_recipients(target: str) -> List[int]:
+    """Получить список Telegram ID для рассылки по сегменту (all, unpaid_leads, paid_students)."""
+    async with AsyncSessionLocal() as session:
+        paid_subquery = select(Order.user_id).where(Order.status == "paid").distinct()
+
+        if target == "unpaid_leads":
+            # Лиды: есть контакты, но нет оплат
+            query = select(User.telegram_id).where(
+                User.phone.isnot(None),
+                User.email.isnot(None),
+                User.id.not_in(paid_subquery)
+            )
+        elif target == "paid_students":
+            # Только оплатившие ученики
+            query = select(User.telegram_id).where(User.id.in_(paid_subquery))
+        else:
+            # Все пользователи бота
+            query = select(User.telegram_id)
+
+        result = await session.execute(query)
+        return list(result.scalars().all())

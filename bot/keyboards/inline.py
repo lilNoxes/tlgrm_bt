@@ -56,15 +56,38 @@ def get_course_access_keyboard(invite_link: str) -> InlineKeyboardMarkup:
 
 
 def get_admin_panel_keyboard() -> InlineKeyboardMarkup:
-    """Кнопки панели администратора с возможностями выгрузки."""
+    """Кнопки панели администратора с возможностями выгрузки и рассылки."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📊 Обновить статистику", callback_data="admin_refresh_stats")],
+            [InlineKeyboardButton(text="📢 Сделать рассылку по базе", callback_data="admin_start_broadcast")],
             [InlineKeyboardButton(text="📥 Полный отчёт (все вкладки в 1 файле)", callback_data="admin_export_full")],
             [
                 InlineKeyboardButton(text="🟢 Оплатившие", callback_data="admin_export_paid"),
                 InlineKeyboardButton(text="🟡 Лиды без оплаты", callback_data="admin_export_unpaid")
             ],
             [InlineKeyboardButton(text="👥 Все пользователи бота", callback_data="admin_export_all")]
+        ]
+    )
+
+
+def get_broadcast_audience_keyboard() -> InlineKeyboardMarkup:
+    """Выбор целевой аудитории для рассылки."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🟡 Только лидам без оплаты", callback_data="broadcast_target:unpaid_leads")],
+            [InlineKeyboardButton(text="🟢 Только оплатившим курс", callback_data="broadcast_target:paid_students")],
+            [InlineKeyboardButton(text="👥 Всем пользователям бота", callback_data="broadcast_target:all")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")]
+        ]
+    )
+
+
+def get_broadcast_confirm_keyboard() -> InlineKeyboardMarkup:
+    """Кнопки подтверждения запуска рассылки."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🚀 Запустить рассылку", callback_data="broadcast_confirm_send")],
+            [InlineKeyboardButton(text="❌ Отменить рассылку", callback_data="broadcast_cancel")]
         ]
     )
