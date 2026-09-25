@@ -46,7 +46,7 @@ async def cmd_start(message: Message, state: FSMContext):
     if is_registered:
         welcome_text += (
             "✅ Вы уже заполнили контактные данные.\n"
-            "Теперь вы можете выбрать интересующий вас тариф и оплатить обучение онлайн через ЮKassa."
+            "Теперь вы можете перейти к оплате обучения онлайн через ЮKassa."
         )
         await message.answer(
             welcome_text,

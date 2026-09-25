@@ -21,7 +21,7 @@ def get_main_menu_keyboard(is_registered: bool = False, has_access: bool = False
     if has_access:
         buttons.append([KeyboardButton(text="🎓 Материалы курса / Канал")])
     else:
-        buttons.append([KeyboardButton(text="🎓 Выбрать тариф и оплатить")])
+        buttons.append([KeyboardButton(text="🎓 Оплатить обучение")])
 
     buttons.append([KeyboardButton(text="👤 Мой профиль"), KeyboardButton(text="ℹ️ О курсе")])
     buttons.append([KeyboardButton(text="💬 Служба заботы и поддержки")])

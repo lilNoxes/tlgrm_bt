@@ -4,8 +4,13 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from bot.config import config
-from bot.database.db import get_active_tariffs, get_or_create_user, update_user_profile
-from bot.keyboards.inline import get_cancel_registration_keyboard, get_tariffs_keyboard, get_cancel_email_keyboard
+from bot.database.db import get_active_tariffs, get_main_course_tariff, get_or_create_user, get_tariff_by_code, update_user_profile
+from bot.keyboards.inline import (
+    get_autumn_tariff_keyboard,
+    get_cancel_email_keyboard,
+    get_cancel_registration_keyboard,
+    get_tariffs_keyboard,
+)
 from bot.keyboards.reply import get_main_menu_keyboard, get_phone_keyboard, remove_keyboard
 from bot.states.registration import RegistrationStates
 
@@ -226,7 +231,7 @@ async def process_email(message: Message, state: FSMContext):
 
     await state.clear()
 
-    tariffs = await get_active_tariffs()
+    main_tariff = await get_main_course_tariff()
 
     success_text = (
         "🎉 <b>Поздравляем! Регистрация успешно завершена!</b>\n\n"
@@ -234,14 +239,32 @@ async def process_email(message: Message, state: FSMContext):
         f"• ФИО: {full_name}\n"
         f"• Телефон: {phone}\n"
         f"• Email: {email}\n\n"
-        "Теперь выберите подходящий тариф онлайн-обучения ниже, чтобы перейти к безопасной оплате через <b>ЮKassa</b> 👇"
+        "Теперь вы можете перейти к безопасной онлайн-оплате через <b>ЮKassa</b> 👇"
     )
 
     await message.answer(success_text, reply_markup=get_main_menu_keyboard(is_registered=True), parse_mode="HTML")
 
-    if tariffs:
-        await message.answer(
-            "📚 <b>Доступные тарифы курса:</b>",
-            reply_markup=get_tariffs_keyboard(tariffs),
-            parse_mode="HTML"
+    if main_tariff:
+        clean_sup = config.SUPPORT_USERNAME.strip().lstrip("@") if config.SUPPORT_USERNAME else ""
+        sup_note = ""
+        if clean_sup:
+            sup_note = (
+                f"\n\n💬 <i>Нужна рассрочка, счёт для юрлица или возникли вопросы по программе? "
+                f"Напишите нашему куратору @{clean_sup}, и мы с радостью поможем!</i>"
+            )
+
+        text = f"Стоимость осеннего канала {main_tariff.price_rub} руб , продолжительность 2 месяца   :{sup_note}"
+        is_admin = message.from_user.id in config.admin_id_list
+        test_tariff_id = None
+        if is_admin:
+            test_tariff = await get_tariff_by_code("test_1rub")
+            if test_tariff:
+                test_tariff_id = test_tariff.id
+
+        keyboard = get_autumn_tariff_keyboard(
+            tariff_id=main_tariff.id,
+            price_rub=main_tariff.price_rub,
+            is_admin=is_admin,
+            test_tariff_id=test_tariff_id
         )
+        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")

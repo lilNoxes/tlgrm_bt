@@ -1,19 +1,23 @@
 import json
 import logging
+from typing import Optional
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, LabeledPrice, Message, PreCheckoutQuery
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, Message, PreCheckoutQuery
 from bot.config import config
 from bot.database.db import (
     create_order,
     get_active_tariffs,
+    get_main_course_tariff,
     get_order_by_id,
+    get_tariff_by_code,
     get_tariff_by_id,
     get_user_by_tg_id,
     mark_order_as_paid,
     user_has_paid_order,
 )
 from bot.keyboards.inline import (
+    get_autumn_tariff_keyboard,
     get_course_access_keyboard,
     get_start_registration_keyboard,
     get_tariff_detail_keyboard,
@@ -25,36 +29,99 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
-@router.message(F.text == "🎓 Выбрать тариф и оплатить")
-@router.message(Command("tariffs"))
+@router.message(F.text.in_({"🎓 Оплатить обучение", "🎓 Выбрать тариф и оплатить", "🍁 Оплатить обучение"}))
+@router.message(Command("tariffs", "pay"))
 async def show_tariffs_list(message: Message):
-    """Показать список доступных тарифов."""
-    tariffs = await get_active_tariffs()
-    if not tariffs:
+    """Показать экран оплаты осеннего канала без лишних промежуточных списков."""
+    main_tariff = await get_main_course_tariff()
+    if not main_tariff:
         await message.answer("В данный момент нет доступных для записи тарифов. Попробуйте позже.")
         return
 
-    text = (
-        "📚 <b>Выберите тариф обучения:</b>\n\n"
-        "Нажмите на интересующий вариант, чтобы узнать подробности и программу тарифа:"
+    clean_sup = config.SUPPORT_USERNAME.strip().lstrip("@") if config.SUPPORT_USERNAME else ""
+    sup_note = ""
+    if clean_sup:
+        sup_note = (
+            f"\n\n💬 <i>Нужна рассрочка, счёт для юрлица или возникли вопросы по программе? "
+            f"Напишите нашему куратору @{clean_sup}, и мы с радостью поможем!</i>"
+        )
+
+    text = f"Стоимость осеннего канала {main_tariff.price_rub} руб , продолжительность 2 месяца   :{sup_note}"
+
+    is_admin = message.from_user.id in config.admin_id_list
+    test_tariff_id = None
+    if is_admin:
+        test_tariff = await get_tariff_by_code("test_1rub")
+        if test_tariff:
+            test_tariff_id = test_tariff.id
+
+    keyboard = get_autumn_tariff_keyboard(
+        tariff_id=main_tariff.id,
+        price_rub=main_tariff.price_rub,
+        is_admin=is_admin,
+        test_tariff_id=test_tariff_id
     )
-    await message.answer(text, reply_markup=get_tariffs_keyboard(tariffs), parse_mode="HTML")
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "show_all_tariffs")
 async def callback_show_tariffs(callback: CallbackQuery):
-    """Возврат к списку тарифов по кнопке."""
+    """Возврат к экрану оплаты по кнопке."""
     await callback.answer()
-    tariffs = await get_active_tariffs()
-    if not tariffs:
+    main_tariff = await get_main_course_tariff()
+    if not main_tariff:
         await callback.message.edit_text("В данный момент нет доступных для записи тарифов.")
         return
 
-    text = (
-        "📚 <b>Выберите тариф обучения:</b>\n\n"
-        "Нажмите на интересующий вариант, чтобы узнать подробности и программу тарифа:"
+    clean_sup = config.SUPPORT_USERNAME.strip().lstrip("@") if config.SUPPORT_USERNAME else ""
+    sup_note = ""
+    if clean_sup:
+        sup_note = (
+            f"\n\n💬 <i>Нужна рассрочка, счёт для юрлица или возникли вопросы по программе? "
+            f"Напишите нашему куратору @{clean_sup}, и мы с радостью поможем!</i>"
+        )
+
+    text = f"Стоимость осеннего канала {main_tariff.price_rub} руб , продолжительность 2 месяца   :{sup_note}"
+
+    is_admin = callback.from_user.id in config.admin_id_list
+    test_tariff_id = None
+    if is_admin:
+        test_tariff = await get_tariff_by_code("test_1rub")
+        if test_tariff:
+            test_tariff_id = test_tariff.id
+
+    keyboard = get_autumn_tariff_keyboard(
+        tariff_id=main_tariff.id,
+        price_rub=main_tariff.price_rub,
+        is_admin=is_admin,
+        test_tariff_id=test_tariff_id
     )
-    await callback.message.edit_text(text, reply_markup=get_tariffs_keyboard(tariffs), parse_mode="HTML")
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.message(Command("test_pay", "test"))
+async def cmd_test_pay(message: Message, bot: Bot):
+    """Секретная команда для запуска тестовой оплаты на 1 рубль."""
+    user = await get_user_by_tg_id(message.from_user.id)
+    if not user or not (user.phone and user.email):
+        await message.answer(
+            "⚠️ <b>Для проведения тестовой оплаты необходимо сначала заполнить контакты в боте!</b>\n\n"
+            "Нажмите кнопку ниже для быстрой регистрации:",
+            reply_markup=get_start_registration_keyboard(),
+            parse_mode="HTML"
+        )
+        return
+
+    test_tariff = await get_tariff_by_code("test_1rub")
+    if not test_tariff:
+        tariffs = await get_active_tariffs()
+        test_tariff = next((t for t in tariffs if t.price_rub == 1), None)
+
+    if not test_tariff:
+        await message.answer("❌ Тестовый тариф на 1 рубль не найден в базе данных.")
+        return
+
+    await send_tariff_invoice(bot=bot, chat_id=message.chat.id, user=user, tariff=test_tariff)
 
 
 @router.callback_query(F.data.startswith("view_tariff:"))
@@ -142,10 +209,21 @@ async def buy_tariff(callback: CallbackQuery, bot: Bot):
         )
         return
 
+    await send_tariff_invoice(bot=bot, chat_id=callback.message.chat.id, user=user, tariff=tariff)
+
+
+async def send_tariff_invoice(bot: Bot, chat_id: int, user, tariff):
+    """Единая функция создания заказа и отправки инвойса ЮKassa с фискализацией 54-ФЗ."""
+    clean_sup = config.SUPPORT_USERNAME.strip().lstrip("@") if config.SUPPORT_USERNAME else ""
+
     if not config.PAYMENT_PROVIDER_TOKEN or "YOUR_" in config.PAYMENT_PROVIDER_TOKEN:
-        await callback.message.answer(
-            "⚠️ <b>Платежная система временно настраивается администратором.</b>\n"
-            "Пожалуйста, свяжитесь с поддержкой через раздел «Помощь».",
+        care = f" Напишите нашему куратору: @{clean_sup}" if clean_sup else ""
+        await bot.send_message(
+            chat_id=chat_id,
+            text=(
+                f"⚠️ <b>Платежная система временно настраивается администратором.</b>\n"
+                f"Пожалуйста, свяжитесь с поддержкой через раздел «Помощь».{care}"
+            ),
             parse_mode="HTML"
         )
         logger.warning("PAYMENT_PROVIDER_TOKEN is missing or not configured in .env!")
@@ -195,7 +273,7 @@ async def buy_tariff(callback: CallbackQuery, bot: Bot):
 
     try:
         await bot.send_invoice(
-            chat_id=callback.message.chat.id,
+            chat_id=chat_id,
             title=f"Оплата: {tariff.title}"[:32],
             description=(
                 f"Доступ к онлайн-курсу по тарифу «{tariff.title}». "
@@ -209,17 +287,24 @@ async def buy_tariff(callback: CallbackQuery, bot: Bot):
             provider_data=json.dumps(receipt_data)
         )
         if clean_sup:
-            await callback.message.answer(
-                f"💬 <i>Если при оплате картой возникнут трудности или вам удобен другой способ расчёта (перевод, СБП, счёт) — "
-                f"напишите нашему куратору @{clean_sup}, мы с радостью поможем завершить оформление вручную!</i>",
+            await bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"💬 <i>Если при оплате картой возникнут трудности или вам удобен другой способ расчёта (перевод, СБП, счёт) — "
+                    f"напишите нашему куратору @{clean_sup}, мы с радостью поможем завершить оформление вручную!</i>"
+                ),
                 parse_mode="HTML"
             )
     except Exception as e:
         logger.exception("Ошибка при отправке инвойса ЮKassa: %s", e)
         care = f" Напишите нашему куратору: @{clean_sup}" if clean_sup else ""
-        await callback.message.answer(
-            f"❌ Не удалось сформировать счет на оплату.{care}\n"
-            "Пожалуйста, обратитесь в службу заботы."
+        await bot.send_message(
+            chat_id=chat_id,
+            text=(
+                f"❌ Не удалось сформировать счет на оплату.{care}\n"
+                "Пожалуйста, обратитесь в службу заботы."
+            ),
+            parse_mode="HTML"
         )
 
 

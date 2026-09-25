@@ -35,14 +35,31 @@ def get_tariffs_keyboard(tariffs: List[CourseTariff]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_tariff_detail_keyboard(tariff_id: int, price_rub: int) -> InlineKeyboardMarkup:
+def get_autumn_tariff_keyboard(
+    tariff_id: int,
+    price_rub: int,
+    is_admin: bool = False,
+    test_tariff_id: Optional[int] = None
+) -> InlineKeyboardMarkup:
+    """Клавиатура для прямого экрана оплаты осеннего канала."""
+    buttons = [
+        [InlineKeyboardButton(text=f"Оплатить {price_rub} руб", callback_data=f"buy_tariff:{tariff_id}")]
+    ]
+    if is_admin and test_tariff_id:
+        buttons.append([
+            InlineKeyboardButton(text="🧪 Тестовая оплата (1 руб)", callback_data=f"buy_tariff:{test_tariff_id}")
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_tariff_detail_keyboard(tariff_id: int, price_rub: int, show_back: bool = True) -> InlineKeyboardMarkup:
     """Кнопки под описанием выбранного тарифа."""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=f"Оплатить {price_rub} руб", callback_data=f"buy_tariff:{tariff_id}")],
-            [InlineKeyboardButton(text="⬅️ Назад ко всем тарифам", callback_data="show_all_tariffs")]
-        ]
-    )
+    buttons = [
+        [InlineKeyboardButton(text=f"Оплатить {price_rub} руб", callback_data=f"buy_tariff:{tariff_id}")]
+    ]
+    if show_back:
+        buttons.append([InlineKeyboardButton(text="⬅️ Назад ко всем тарифам", callback_data="show_all_tariffs")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def get_course_access_keyboard(invite_link: str) -> InlineKeyboardMarkup:

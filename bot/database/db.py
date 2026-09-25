@@ -184,6 +184,32 @@ async def get_tariff_by_id(tariff_id: int) -> Optional[CourseTariff]:
         return result.scalar_one_or_none()
 
 
+async def get_tariff_by_code(code: str) -> Optional[CourseTariff]:
+    """Получить тариф по символьному коду."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(CourseTariff).where(CourseTariff.code == code))
+        return result.scalar_one_or_none()
+
+
+async def get_main_course_tariff() -> Optional[CourseTariff]:
+    """Получить основной тариф курса (не тестовый)."""
+    async with AsyncSessionLocal() as session:
+        # Сначала ищем осенний канал
+        result = await session.execute(
+            select(CourseTariff).where(CourseTariff.code == "autumn_channel", CourseTariff.is_active == True)
+        )
+        tariff = result.scalar_one_or_none()
+        if tariff:
+            return tariff
+
+        # Если по коду не найден — берём любой активный не-тестовый
+        result = await session.execute(
+            select(CourseTariff).where(CourseTariff.code != "test_1rub", CourseTariff.is_active == True).order_by(CourseTariff.price_rub.desc())
+        )
+        return result.scalars().first()
+
+
+
 async def create_order(user_id: int, tariff_id: int, amount: int) -> Order:
     """Создать новый заказ со статусом pending."""
     async with AsyncSessionLocal() as session:
