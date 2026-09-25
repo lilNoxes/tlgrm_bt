@@ -84,24 +84,10 @@ DEFAULT_TARIFFS = [
         "is_active": True
     },
     {
-        "code": "base",
-        "title": "Тариф «Базовый»",
-        "description": "• Доступ ко всем лекциям курса в записи\n• Домашние задания для самопроверки\n• Доступ к закрытому каналу с материалами на 3 месяца",
-        "price_rub": 4900,
-        "is_active": True
-    },
-    {
-        "code": "standard",
-        "title": "Тариф «С куратором» (Хит)",
-        "description": "• Всё, что входит в «Базовый»\n• Проверка всех домашних заданий куратором\n• Доступ в закрытый чат участников\n• 2 групповых онлайн-разбора вопросов",
-        "price_rub": 9900,
-        "is_active": True
-    },
-    {
-        "code": "vip",
-        "title": "Тариф «VIP / Наставничество»",
-        "description": "• Всё, что входит в «С куратором»\n• 3 личные консультации от автора курса\n• Индивидуальный план развития и доведение до результата\n• Бессрочный доступ ко всем материалам",
-        "price_rub": 24900,
+        "code": "autumn_channel",
+        "title": "🍁 Осенний канал (2 месяца)",
+        "description": "Стоимость осеннего канала 2399 руб , продолжительность 2 месяца",
+        "price_rub": 2399,
         "is_active": True
     }
 ]
@@ -113,6 +99,14 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
     async with AsyncSessionLocal() as session:
+        active_codes = {t["code"] for t in DEFAULT_TARIFFS}
+
+        # Деактивируем старые тарифы, которых больше нет в активном списке
+        all_tariffs_res = await session.execute(select(CourseTariff))
+        for existing_tariff in all_tariffs_res.scalars().all():
+            if existing_tariff.code not in active_codes:
+                existing_tariff.is_active = False
+
         # Синхронизируем тарифы: добавляем новые или обновляем существующие цены и описания
         for t_data in DEFAULT_TARIFFS:
             result = await session.execute(

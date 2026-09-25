@@ -80,13 +80,15 @@ async def view_tariff_detail(callback: CallbackQuery):
             f"Напишите нашему куратору @{clean_sup}, и мы с радостью поможем!</i>"
         )
 
-    text = (
-        f"🎓 <b>{tariff.title}</b>\n\n"
-        f"<b>Что входит в программу:</b>\n"
-        f"{tariff.description or 'Подробная информация уточняется.'}\n\n"
-        f"💰 <b>Стоимость:</b> {formatted_price} ₽\n\n"
-        f"<i>Для перехода к безопасной оплате нажмите кнопку «Оплатить» ниже.</i>{sup_note}"
-    )
+    if tariff.code == "test_1rub":
+        text = (
+            f"🧪 <b>{tariff.title}</b>\n\n"
+            f"{tariff.description}\n\n"
+            f"💰 <b>Стоимость:</b> 1 рубль"
+            f"{sup_note}"
+        )
+    else:
+        text = f"Стоимость осеннего канала {tariff.price_rub} руб , продолжительность 2 месяца   :{sup_note}"
 
     await callback.message.edit_text(
         text,

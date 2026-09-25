@@ -37,10 +37,9 @@ def get_tariffs_keyboard(tariffs: List[CourseTariff]) -> InlineKeyboardMarkup:
 
 def get_tariff_detail_keyboard(tariff_id: int, price_rub: int) -> InlineKeyboardMarkup:
     """Кнопки под описанием выбранного тарифа."""
-    formatted_price = f"{price_rub:,}".replace(",", " ")
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=f"💳 Оплатить ({formatted_price} ₽)", callback_data=f"buy_tariff:{tariff_id}")],
+            [InlineKeyboardButton(text=f"Оплатить {price_rub} руб", callback_data=f"buy_tariff:{tariff_id}")],
             [InlineKeyboardButton(text="⬅️ Назад ко всем тарифам", callback_data="show_all_tariffs")]
         ]
     )
