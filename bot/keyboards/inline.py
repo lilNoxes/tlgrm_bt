@@ -52,6 +52,17 @@ def get_autumn_tariff_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+def get_yookassa_pay_keyboard(pay_url: str, order_id: int, price_rub: int) -> InlineKeyboardMarkup:
+    """Клавиатура с кнопкой перехода на сайт ЮKassa и кнопкой проверки оплаты."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=f"💳 Оплатить {price_rub} руб (ЮKassa)", url=pay_url)],
+            [InlineKeyboardButton(text="🔄 Проверить оплату", callback_data=f"check_pay:{order_id}")],
+            [InlineKeyboardButton(text="⬅️ Отмена / Назад", callback_data="show_all_tariffs")]
+        ]
+    )
+
+
 def get_tariff_detail_keyboard(tariff_id: int, price_rub: int, show_back: bool = True) -> InlineKeyboardMarkup:
     """Кнопки под описанием выбранного тарифа."""
     buttons = [

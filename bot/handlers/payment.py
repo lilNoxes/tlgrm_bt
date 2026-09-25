@@ -1,10 +1,12 @@
+import asyncio
 import json
 import logging
 from typing import Optional
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, Message, PreCheckoutQuery
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, Message, PreCheckoutQuery, SuccessfulPayment
 from bot.config import config
+from bot.database.models import Order, User
 from bot.database.db import (
     create_order,
     get_active_tariffs,
@@ -12,8 +14,10 @@ from bot.database.db import (
     get_order_by_id,
     get_tariff_by_code,
     get_tariff_by_id,
+    get_user_by_id,
     get_user_by_tg_id,
     mark_order_as_paid,
+    update_order_provider_id,
     user_has_paid_order,
 )
 from bot.keyboards.inline import (
@@ -22,8 +26,10 @@ from bot.keyboards.inline import (
     get_start_registration_keyboard,
     get_tariff_detail_keyboard,
     get_tariffs_keyboard,
+    get_yookassa_pay_keyboard,
 )
 from bot.keyboards.reply import get_main_menu_keyboard
+from bot.services.yookassa import create_yookassa_payment, get_yookassa_payment
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -203,11 +209,16 @@ async def buy_tariff(callback: CallbackQuery, bot: Bot):
     await send_tariff_invoice(bot=bot, chat_id=callback.message.chat.id, user=user, tariff=tariff)
 
 
-async def send_tariff_invoice(bot: Bot, chat_id: int, user, tariff):
-    """Единая функция создания заказа и отправки инвойса ЮKassa с фискализацией 54-ФЗ."""
+async def send_tariff_invoice(bot: Bot, chat_id: int, user: User, tariff):
+    """
+    Единая функция создания заказа и отправки инвойса:
+    1. Если заданы YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY -> создает ссылку через прямой API ЮKassa.
+    2. Если задан PAYMENT_PROVIDER_TOKEN -> отправляет нативный счет Telegram Payments (BotFather).
+    """
     sup = config.formatted_support
 
-    if not config.PAYMENT_PROVIDER_TOKEN or "YOUR_" in config.PAYMENT_PROVIDER_TOKEN:
+    # Проверяем, настроена ли хотя бы одна платёжная система
+    if not config.is_yookassa_direct and (not config.PAYMENT_PROVIDER_TOKEN or "YOUR_" in config.PAYMENT_PROVIDER_TOKEN):
         care = f" Напишите нашему куратору: {sup}" if sup else ""
         await bot.send_message(
             chat_id=chat_id,
@@ -217,13 +228,93 @@ async def send_tariff_invoice(bot: Bot, chat_id: int, user, tariff):
             ),
             parse_mode="HTML"
         )
-        logger.warning("PAYMENT_PROVIDER_TOKEN is missing or not configured in .env!")
+        logger.warning("Ни прямой API ЮKassa, ни PAYMENT_PROVIDER_TOKEN не настроены!")
         return
 
     # Создаем заказ в базе данных
     order = await create_order(user_id=user.id, tariff_id=tariff.id, amount=tariff.price_rub)
 
-    # Нормализация телефона в формат E.164 (+7XXXXXXXXXX) для чека ЮKassa
+    # ---------------------------------------------------------
+    # ВАРИАНТ 1: Прямой официальный API ЮKassa (ShopID + SecretKey)
+    # ---------------------------------------------------------
+    if config.is_yookassa_direct:
+        bot_info = await bot.get_me()
+        bot_username = bot_info.username or "bot"
+        return_url = f"https://t.me/{bot_username}"
+
+        payment_data = await create_yookassa_payment(
+            amount_rub=tariff.price_rub,
+            description=f"Обучение: {tariff.title}",
+            order_id=order.id,
+            user_email=user.email or "client@example.com",
+            user_phone=user.phone or "+79990000000",
+            return_url=return_url
+        )
+
+        if not payment_data or "confirmation" not in payment_data:
+            care = f" Напишите нашему куратору: {sup}" if sup else ""
+            await bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"❌ Не удалось сформировать счет на оплату в ЮKassa.{care}\n"
+                    "Пожалуйста, попробуйте позже или обратитесь в службу заботы."
+                ),
+                parse_mode="HTML"
+            )
+            return
+
+        payment_id = payment_data.get("id")
+        confirmation_url = payment_data["confirmation"].get("confirmation_url")
+
+        # Сохраняем ID платежа ЮKassa в заказе
+        await update_order_provider_id(order.id, payment_id)
+
+        msg_text = (
+            "💳 <b>Счет на оплату обучения сформирован!</b>\n\n"
+            f"🍁 <b>Тариф:</b> {tariff.title}\n"
+            f"💰 <b>Сумма к оплате:</b> <b>{tariff.price_rub} ₽</b>\n"
+            f"👤 <b>Ученик:</b> {user.full_name} (<code>{user.email}</code>)\n\n"
+            "Нажмите кнопку <b>«Оплатить на сайте ЮKassa»</b> ниже, чтобы безопасно совершить платёж.\n"
+            "<i>(Доступны СБП, любые банковские карты, SberPay, T-Pay)</i>\n\n"
+            "После оплаты нажмите кнопку <b>«🔄 Проверить оплату»</b> 👇"
+        )
+
+        await bot.send_message(
+            chat_id=chat_id,
+            text=msg_text,
+            reply_markup=get_yookassa_pay_keyboard(
+                pay_url=confirmation_url,
+                order_id=order.id,
+                price_rub=tariff.price_rub
+            ),
+            parse_mode="HTML"
+        )
+
+        if sup:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"💬 <i>Если при оплате возникнут сложности или нужен счёт для юрлица — "
+                    f"напишите нашему куратору {sup}, и мы обязательно поможем!</i>"
+                ),
+                parse_mode="HTML"
+            )
+
+        # Запускаем фоновый автоматический опрос статуса в ЮKassa
+        asyncio.create_task(
+            poll_yookassa_payment(
+                bot=bot,
+                order_id=order.id,
+                payment_id=payment_id,
+                chat_id=chat_id,
+                user_id=user.id
+            )
+        )
+        return
+
+    # ---------------------------------------------------------
+    # ВАРИАНТ 2: Нативные Telegram Payments через BotFather
+    # ---------------------------------------------------------
     clean_digits = "".join(filter(str.isdigit, user.phone or ""))
     if len(clean_digits) == 11 and clean_digits.startswith("8"):
         normalized_phone = f"+7{clean_digits[1:]}"
@@ -234,7 +325,6 @@ async def send_tariff_invoice(bot: Bot, chat_id: int, user, tariff):
     else:
         normalized_phone = f"+{clean_digits}" if clean_digits else "+79990000000"
 
-    # Формируем чек для 54-ФЗ (передается в ЮKassa через provider_data)
     receipt_data = {
         "receipt": {
             "items": [
@@ -245,7 +335,7 @@ async def send_tariff_invoice(bot: Bot, chat_id: int, user, tariff):
                         "value": f"{tariff.price_rub:.2f}",
                         "currency": "RUB"
                     },
-                    "vat_code": 1  # 1 - без НДС
+                    "vat_code": 1
                 }
             ],
             "customer": {
@@ -258,7 +348,7 @@ async def send_tariff_invoice(bot: Bot, chat_id: int, user, tariff):
     prices = [
         LabeledPrice(
             label=f"{tariff.title}"[:32],
-            amount=tariff.price_rub * 100  # В копейках
+            amount=tariff.price_rub * 100
         )
     ]
 
@@ -299,9 +389,188 @@ async def send_tariff_invoice(bot: Bot, chat_id: int, user, tariff):
         )
 
 
+@router.callback_query(F.data.startswith("check_pay:"))
+async def callback_check_payment(callback: CallbackQuery, bot: Bot):
+    """Ручная проверка статуса оплаты по нажатию кнопки «Проверить оплату»."""
+    try:
+        order_id = int(callback.data.split(":")[1])
+    except (ValueError, IndexError):
+        await callback.answer("Ошибка в номере заказа.")
+        return
+
+    order = await get_order_by_id(order_id)
+    if not order:
+        await callback.answer("Заказ не найден.", show_alert=True)
+        return
+
+    if order.status == "paid":
+        await callback.answer("✅ Этот заказ уже успешно оплачен! Доступ открыт.", show_alert=True)
+        return
+
+    if not order.provider_payment_charge_id:
+        await callback.answer("Счёт ещё формируется или данные устарели.", show_alert=True)
+        return
+
+    payment_data = await get_yookassa_payment(order.provider_payment_charge_id)
+    if not payment_data:
+        await callback.answer("⚠️ Не удалось получить ответ от ЮKassa. Попробуйте через 10 секунд.", show_alert=True)
+        return
+
+    status = payment_data.get("status")
+    if status == "succeeded":
+        await callback.answer("🎉 Оплата подтверждена!")
+        user = await get_user_by_id(order.user_id)
+        if user:
+            await grant_successful_access(
+                bot=bot,
+                user=user,
+                order=order,
+                provider_charge_id=order.provider_payment_charge_id,
+                chat_id=callback.message.chat.id
+            )
+    elif status in ("pending", "waiting_for_capture"):
+        await callback.answer(
+            "⏳ Оплата ещё не поступила.\nЕсли вы только что оплатили заказ, подождите 10-15 секунд и нажмите кнопку снова.",
+            show_alert=True
+        )
+    elif status == "canceled":
+        await callback.answer(
+            "❌ Платёж отменён или истёк срок действия счёта. Пожалуйста, оформите заказ заново.",
+            show_alert=True
+        )
+    else:
+        await callback.answer(f"Статус платежа: {status}. Ожидаем подтверждения от банка.", show_alert=True)
+
+
+async def poll_yookassa_payment(bot: Bot, order_id: int, payment_id: str, chat_id: int, user_id: int):
+    """Фоновый периодический опрос ЮKassa на случай, если ученик не нажал кнопку."""
+    for _ in range(35):  # 35 проверок по 15 секунд = около 8.5 минут
+        await asyncio.sleep(15)
+        try:
+            order = await get_order_by_id(order_id)
+            if not order or order.status == "paid":
+                return
+
+            payment_data = await get_yookassa_payment(payment_id)
+            if not payment_data:
+                continue
+
+            status = payment_data.get("status")
+            if status == "succeeded":
+                user = await get_user_by_id(user_id)
+                if user:
+                    await grant_successful_access(
+                        bot=bot,
+                        user=user,
+                        order=order,
+                        provider_charge_id=payment_id,
+                        chat_id=chat_id
+                    )
+                return
+            elif status == "canceled":
+                logger.info("Платёж %s отменён.", payment_id)
+                return
+        except Exception as e:
+            logger.error("Ошибка при фоновом опросе ЮKassa для заказа %s: %s", order_id, e)
+
+
+async def grant_successful_access(
+    bot: Bot,
+    user: User,
+    order: Order,
+    provider_charge_id: str,
+    chat_id: Optional[int] = None
+):
+    """Единая функция активации доступа после оплаты (и для ЮKassa API, и для BotFather)."""
+    target_chat_id = chat_id or user.telegram_id
+
+    # Отмечаем заказ в БД как оплаченный
+    if order.status != "paid":
+        order = await mark_order_as_paid(
+            order_id=order.id,
+            provider_payment_charge_id=provider_charge_id
+        )
+
+    tariff = await get_tariff_by_id(order.tariff_id) if order else None
+    tariff_title = tariff.title if tariff else "Курс"
+
+    # Генерация персональной ссылки на канал
+    invite_link = config.CHANNEL_INVITE_LINK
+    if config.CHANNEL_ID:
+        try:
+            student_label = f"Ученик {user.telegram_id}"
+            if user and user.full_name:
+                student_label += f" ({user.full_name[:15]})"
+            link_obj = await bot.create_chat_invite_link(
+                chat_id=config.CHANNEL_ID,
+                name=student_label,
+                member_limit=1
+            )
+            invite_link = link_obj.invite_link
+            logger.info("Создан одноразовый инвайт для %s: %s", user.telegram_id, invite_link)
+        except Exception as e:
+            logger.warning(
+                "Не удалось создать одноразовый инвайт в канале %s (%s). Используется статическая ссылка.",
+                config.CHANNEL_ID, e
+            )
+
+    # 1. Обновляем главное меню ученика
+    try:
+        await bot.send_message(
+            chat_id=target_chat_id,
+            text="✅ <b>Оплата принята! Главное меню обновлено.</b>",
+            reply_markup=get_main_menu_keyboard(is_registered=True, has_access=True),
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.error("Не удалось отправить обновленное меню: %s", e)
+
+    # 2. Поздравительное сообщение с кнопкой входа в закрытый канал
+    congrats_text = (
+        "🎉🎉🎉 <b>ОПЛАТА УСПЕШНО ПРОШЛА!</b>\n\n"
+        f"Поздравляем, <b>{user.full_name or 'Ученик'}</b>!\n"
+        f"Вы успешно зачислены на курс: <b>«{tariff_title}»</b>.\n\n"
+        f"💳 Сумма оплаты: <b>{order.amount} ₽</b>\n"
+        f"🧾 Чек отправлен на ваш email: <code>{user.email or 'указанный при регистрации'}</code>\n\n"
+        "👉 <b>Нажмите на кнопку ниже, чтобы войти в закрытый канал курса и начать обучение:</b>"
+    )
+
+    try:
+        await bot.send_message(
+            chat_id=target_chat_id,
+            text=congrats_text,
+            reply_markup=get_course_access_keyboard(invite_link),
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.error("Не удалось отправить поздравление ученику: %s", e)
+
+    # 3. Уведомление администраторам с быстрой ссылкой на профиль ученика
+    user_mention = f"<a href=\"tg://user?id={user.telegram_id}\">{user.full_name or 'Ученик'}</a>"
+    username_str = f"@{user.username}" if user.username else "отсутствует"
+
+    admin_notify_text = (
+        "🔥 <b>НОВАЯ ОПЛАТА КУРСА!</b>\n\n"
+        f"• <b>Заказ №:</b> {order.id}\n"
+        f"• <b>Тариф:</b> {tariff_title}\n"
+        f"• <b>Сумма:</b> {order.amount} ₽\n"
+        f"• <b>Ученик:</b> {user_mention}\n"
+        f"• <b>Телефон:</b> {user.phone or 'Не указан'}\n"
+        f"• <b>Email:</b> {user.email or 'Не указан'}\n"
+        f"• <b>Telegram:</b> {username_str} (ID: <code>{user.telegram_id}</code>)\n"
+        f"• <b>ID ЮKassa:</b> <code>{provider_charge_id}</code>"
+    )
+
+    for admin_id in config.admin_id_list:
+        try:
+            await bot.send_message(admin_id, admin_notify_text, parse_mode="HTML")
+        except Exception as e:
+            logger.error("Не удалось отправить уведомление админу %s: %s", admin_id, e)
+
+
 @router.pre_checkout_query()
 async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery, bot: Bot):
-    """Предварительная валидация перед проведением платежа."""
+    """Предварительная валидация перед проведением платежа (для BotFather Telegram Payments)."""
     payload = pre_checkout_query.invoice_payload
 
     if not payload.startswith("order:"):
@@ -332,7 +601,6 @@ async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery, bot: 
             )
             return
 
-        # Все проверки пройдены
         await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
 
     except Exception as e:
@@ -346,7 +614,7 @@ async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery, bot: 
 
 @router.message(F.successful_payment)
 async def process_successful_payment(message: Message, bot: Bot):
-    """Обработка успешной оплаты через ЮKassa."""
+    """Обработка успешной оплаты через нативные платежи Telegram Payments."""
     payment: SuccessfulPayment = message.successful_payment
     payload = payment.invoice_payload
 
@@ -354,82 +622,27 @@ async def process_successful_payment(message: Message, bot: Bot):
         logger.error("Получена оплата с неизвестным payload: %s", payload)
         return
 
-    order_id = int(payload.split(":")[1])
-    tg_charge_id = payment.telegram_payment_charge_id
-    provider_charge_id = payment.provider_payment_charge_id
+    try:
+        order_id = int(payload.split(":")[1])
+    except (ValueError, IndexError):
+        return
 
-    # Отмечаем заказ в БД как оплаченный
-    order = await mark_order_as_paid(
-        order_id=order_id,
-        telegram_payment_charge_id=tg_charge_id,
-        provider_payment_charge_id=provider_charge_id
-    )
+    order = await get_order_by_id(order_id)
+    if not order:
+        return
 
     user = await get_user_by_tg_id(message.from_user.id)
-    tariff = await get_tariff_by_id(order.tariff_id) if order else None
-    tariff_title = tariff.title if tariff else "Курс"
+    if not user:
+        return
 
-    # Генерация персональной ссылки на канал (если задан CHANNEL_ID и бот админ)
-    invite_link = config.CHANNEL_INVITE_LINK
-    if config.CHANNEL_ID:
-        try:
-            student_label = f"Ученик {message.from_user.id}"
-            if user and user.full_name:
-                student_label += f" ({user.full_name[:15]})"
-            link_obj = await bot.create_chat_invite_link(
-                chat_id=config.CHANNEL_ID,
-                name=student_label,
-                member_limit=1
-            )
-            invite_link = link_obj.invite_link
-            logger.info("Создан одноразовый инвайт для %s: %s", message.from_user.id, invite_link)
-        except Exception as e:
-            logger.warning(
-                "Не удалось создать одноразовый инвайт в канале %s (%s). Используется статическая ссылка.",
-                config.CHANNEL_ID, e
-            )
+    tg_charge_id = payment.telegram_payment_charge_id
+    provider_charge_id = payment.provider_payment_charge_id or tg_charge_id
 
-    # 1. Сначала обновляем главное меню пользователя
-    await message.answer(
-        "✅ <b>Оплата принята! Главное меню обновлено.</b>",
-        reply_markup=get_main_menu_keyboard(is_registered=True, has_access=True),
-        parse_mode="HTML"
+    # Вызываем единую процедуру выдачи доступа
+    await grant_successful_access(
+        bot=bot,
+        user=user,
+        order=order,
+        provider_charge_id=provider_charge_id,
+        chat_id=message.chat.id
     )
-
-    # 2. Главное поздравительное сообщение с кнопкой перехода в канал (остается последним перед глазами)
-    congrats_text = (
-        "🎉🎉🎉 <b>ОПЛАТА УСПЕШНО ПРОШЛА!</b>\n\n"
-        f"Поздравляем, <b>{user.full_name if user else message.from_user.first_name}</b>!\n"
-        f"Вы успешно зачислены на курс по тарифу: <b>«{tariff_title}»</b>.\n\n"
-        f"💳 Сумма оплаты: <b>{order.amount if order else payment.total_amount // 100} ₽</b>\n"
-        f"🧾 Чек отправлен на ваш email: <code>{user.email if user else 'указанный при оплате'}</code>\n\n"
-        "👉 <b>Нажмите на кнопку ниже, чтобы войти в закрытый канал курса и начать обучение:</b>"
-    )
-
-    await message.answer(
-        congrats_text,
-        reply_markup=get_course_access_keyboard(invite_link),
-        parse_mode="HTML"
-    )
-
-    # 3. Уведомление администраторов с быстрой ссылкой на профиль ученика
-    user_mention = f"<a href=\"tg://user?id={message.from_user.id}\">{user.full_name if user else message.from_user.first_name}</a>"
-    username_str = f"@{message.from_user.username}" if message.from_user.username else "отсутствует"
-
-    admin_notify_text = (
-        "🔥 <b>НОВАЯ ОПЛАТА КУРСА!</b>\n\n"
-        f"• <b>Заказ №:</b> {order_id}\n"
-        f"• <b>Тариф:</b> {tariff_title}\n"
-        f"• <b>Сумма:</b> {order.amount if order else payment.total_amount // 100} ₽\n"
-        f"• <b>Ученик:</b> {user_mention}\n"
-        f"• <b>Телефон:</b> {user.phone if user else 'Не указан'}\n"
-        f"• <b>Email:</b> {user.email if user else 'Не указан'}\n"
-        f"• <b>Telegram:</b> {username_str} (ID: <code>{message.from_user.id}</code>)\n"
-        f"• <b>ID ЮKassa:</b> <code>{provider_charge_id}</code>"
-    )
-
-    for admin_id in config.admin_id_list:
-        try:
-            await bot.send_message(admin_id, admin_notify_text, parse_mode="HTML")
-        except Exception as e:
-            logger.error("Не удалось отправить уведомление админу %s: %s", admin_id, e)

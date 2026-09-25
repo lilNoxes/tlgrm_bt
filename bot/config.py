@@ -7,6 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     BOT_TOKEN: str
     PAYMENT_PROVIDER_TOKEN: str = ""
+    YOOKASSA_SHOP_ID: str = ""
+    YOOKASSA_SECRET_KEY: str = ""
     ADMIN_IDS: str = ""
     CHANNEL_INVITE_LINK: str = "https://t.me/"
     CHANNEL_ID: str = ""
@@ -43,6 +45,11 @@ class Settings(BaseSettings):
             if username:
                 contacts.append(f"@{username}")
         return ", ".join(contacts)
+
+    @property
+    def is_yookassa_direct(self) -> bool:
+        """Использовать ли прямую интеграцию с API ЮKassa по ShopID и SecretKey."""
+        return bool(self.YOOKASSA_SHOP_ID and self.YOOKASSA_SECRET_KEY)
 
 
 config = Settings()

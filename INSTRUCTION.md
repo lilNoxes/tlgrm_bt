@@ -43,15 +43,21 @@ DB_NAME=bot_database.db
 4. Введите юзернейм бота на английском, оканчивающийся на `bot` (например, *Katya_Course_bot*).
 5. Скопируйте полученный HTTP API Token и вставьте в `BOT_TOKEN`.
 
-### 2. Подключение ЮKassa (PAYMENT_PROVIDER_TOKEN):
-1. В диалоге с [@BotFather](https://t.me/BotFather) отправьте команду /mybots и выберите вашего бота.
+### 2. Подключение ЮKassa (два взаимозаменяемых способа):
+
+**Способ А (Самый простой — прямой API по ключам):**
+1. В личном кабинете ЮKassa зайдите в **Настройки** ➔ **Интеграция** ➔ **Ключи API**.
+2. Скопируйте **shopId** (идентификатор магазина) и вставьте в `YOOKASSA_SHOP_ID`.
+3. Сгенерируйте и скопируйте **Секретный ключ** (начинается с `live_` или `test_`) и вставьте в `YOOKASSA_SECRET_KEY`.
+*(При этом `PAYMENT_PROVIDER_TOKEN` можно оставить пустым!)*
+
+**Способ Б (Нативные платежи внутри Telegram через BotFather):**
+1. В диалоге с [@BotFather](https://t.me/BotFather) отправьте команду `/mybots` и выберите вашего бота.
 2. Нажмите **Bot Settings** ➔ **Payments**.
-3. Найдите в списке **YooKassa (ЮKassa)**:
-   - Для боевых оплат выберите **Connect YooKassa Live**.
-   - Для тестирования без списания денег выберите **Connect YooKassa Test**.
-4. BotFather откроет защищенную страницу авторизации ЮKassa. Войдите в личный кабинет ЮKassa и подтвердите привязку магазина.
-5. BotFather пришлет сообщение с готовым токеном платежей (начинается с цифр и :LIVE: или :TEST:).
-6. Скопируйте его и вставьте в PAYMENT_PROVIDER_TOKEN.
+3. Найдите в списке **YooKassa (ЮKassa)** ➔ выберите **Connect YooKassa Live** (или Test).
+4. Войдите в личный кабинет ЮKassa и подтвердите привязку.
+5. Скопируйте присланный токен `...:LIVE:...` и вставьте в `PAYMENT_PROVIDER_TOKEN`.
+*(При этом `YOOKASSA_SHOP_ID` и `YOOKASSA_SECRET_KEY` оставьте пустыми).*
 
 ### 3. Ваш Telegram ID (ADMIN_IDS):
 1. Откройте бота [@userinfobot](https://t.me/userinfobot) в Telegram.

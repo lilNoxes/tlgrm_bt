@@ -154,6 +154,13 @@ async def get_user_by_tg_id(telegram_id: int) -> Optional[User]:
         return result.scalar_one_or_none()
 
 
+async def get_user_by_id(user_id: int) -> Optional[User]:
+    """Получить пользователя по первичному ключу ID."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User).where(User.id == user_id))
+        return result.scalar_one_or_none()
+
+
 async def update_user_profile(telegram_id: int, full_name: str, phone: str, email: str) -> Optional[User]:
     """Обновить контактные данные пользователя после регистрации."""
     async with AsyncSessionLocal() as session:
@@ -229,6 +236,23 @@ async def get_order_by_id(order_id: int) -> Optional[Order]:
     """Получить заказ по ID."""
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Order).where(Order.id == order_id))
+        return result.scalar_one_or_none()
+
+
+async def update_order_provider_id(order_id: int, provider_payment_charge_id: str) -> None:
+    """Сохранить ID платежа шлюза ЮKassa в заказе."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Order).where(Order.id == order_id))
+        order = result.scalar_one_or_none()
+        if order:
+            order.provider_payment_charge_id = provider_payment_charge_id
+            await session.commit()
+
+
+async def get_order_by_provider_payment_id(provider_payment_charge_id: str) -> Optional[Order]:
+    """Найти заказ по ID платежа ЮKassa."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Order).where(Order.provider_payment_charge_id == provider_payment_charge_id))
         return result.scalar_one_or_none()
 
 
