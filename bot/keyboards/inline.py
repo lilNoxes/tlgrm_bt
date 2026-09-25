@@ -7,7 +7,7 @@ def get_start_registration_keyboard() -> InlineKeyboardMarkup:
     """Кнопка начала регистрации."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📝 Начать регистрацию на курс", callback_data="start_registration")]
+            [InlineKeyboardButton(text="📝 Начать регистрацию", callback_data="start_registration")]
         ]
     )
 
