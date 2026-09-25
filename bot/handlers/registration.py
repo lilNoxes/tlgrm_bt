@@ -57,7 +57,7 @@ async def start_registration(event: Message | CallbackQuery, state: FSMContext):
 
     text = (
         "📝 <b>Шаг 1 из 3: Ваше имя и фамилия</b>\n\n"
-        "Пожалуйста, введите ваше имя и фамилию (так, как они будут указаны в сертификате и списке учеников):\n\n"
+        "Пожалуйста, введите ваше имя и фамилию:\n\n"
         "<i>Например: Екатерина Смирнова</i>"
     )
 
@@ -69,6 +69,7 @@ async def start_registration(event: Message | CallbackQuery, state: FSMContext):
 
 
 MENU_COMMANDS_AND_BUTTONS = {
+    "🎓 Оплатить обучение",
     "🎓 Выбрать тариф и оплатить",
     "ℹ️ О курсе",
     "👤 Мой профиль",
@@ -249,7 +250,7 @@ async def process_email(message: Message, state: FSMContext):
         sup_note = ""
         if clean_sup:
             sup_note = (
-                f"\n\n💬 <i>Нужна рассрочка, счёт для юрлица или возникли вопросы по программе? "
+                f"\n\n💬 <i>Возникли вопросы по оплате, счёт для юрлица или вопросы по программе? "
                 f"Напишите нашему куратору @{clean_sup}, и мы с радостью поможем!</i>"
             )
 

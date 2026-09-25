@@ -29,6 +29,17 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+def get_support_payment_note() -> str:
+    """Текст заботы с контактом куратора для вопросов по оплате и программе."""
+    clean_sup = config.SUPPORT_USERNAME.strip().lstrip("@") if config.SUPPORT_USERNAME else ""
+    if clean_sup:
+        return (
+            f"\n\n💬 <i>Возникли вопросы по оплате, счёт для юрлица или вопросы по программе? "
+            f"Напишите нашему куратору @{clean_sup}, и мы с радостью поможем!</i>"
+        )
+    return ""
+
+
 @router.message(F.text.in_({"🎓 Оплатить обучение", "🎓 Выбрать тариф и оплатить", "🍁 Оплатить обучение"}))
 @router.message(Command("tariffs", "pay"))
 async def show_tariffs_list(message: Message):
@@ -38,14 +49,7 @@ async def show_tariffs_list(message: Message):
         await message.answer("В данный момент нет доступных для записи тарифов. Попробуйте позже.")
         return
 
-    clean_sup = config.SUPPORT_USERNAME.strip().lstrip("@") if config.SUPPORT_USERNAME else ""
-    sup_note = ""
-    if clean_sup:
-        sup_note = (
-            f"\n\n💬 <i>Нужна рассрочка, счёт для юрлица или возникли вопросы по программе? "
-            f"Напишите нашему куратору @{clean_sup}, и мы с радостью поможем!</i>"
-        )
-
+    sup_note = get_support_payment_note()
     text = f"Стоимость осеннего канала {main_tariff.price_rub} руб , продолжительность 2 месяца   :{sup_note}"
 
     is_admin = message.from_user.id in config.admin_id_list
@@ -73,14 +77,7 @@ async def callback_show_tariffs(callback: CallbackQuery):
         await callback.message.edit_text("В данный момент нет доступных для записи тарифов.")
         return
 
-    clean_sup = config.SUPPORT_USERNAME.strip().lstrip("@") if config.SUPPORT_USERNAME else ""
-    sup_note = ""
-    if clean_sup:
-        sup_note = (
-            f"\n\n💬 <i>Нужна рассрочка, счёт для юрлица или возникли вопросы по программе? "
-            f"Напишите нашему куратору @{clean_sup}, и мы с радостью поможем!</i>"
-        )
-
+    sup_note = get_support_payment_note()
     text = f"Стоимость осеннего канала {main_tariff.price_rub} руб , продолжительность 2 месяца   :{sup_note}"
 
     is_admin = callback.from_user.id in config.admin_id_list
@@ -139,13 +136,7 @@ async def view_tariff_detail(callback: CallbackQuery):
         return
 
     formatted_price = f"{tariff.price_rub:,}".replace(",", " ")
-    clean_sup = config.SUPPORT_USERNAME.strip().lstrip("@") if config.SUPPORT_USERNAME else ""
-    sup_note = ""
-    if clean_sup:
-        sup_note = (
-            f"\n\n💬 <i>Нужна рассрочка, счёт для юрлица или возникли вопросы по программе? "
-            f"Напишите нашему куратору @{clean_sup}, и мы с радостью поможем!</i>"
-        )
+    sup_note = get_support_payment_note()
 
     if tariff.code == "test_1rub":
         text = (
