@@ -32,5 +32,17 @@ class Settings(BaseSettings):
                 result.append(int(admin_id))
         return result
 
+    @property
+    def formatted_support(self) -> str:
+        """Красиво отформатированные юзернеймы кураторов с символом @ (поддерживает список через запятую)."""
+        if not self.SUPPORT_USERNAME:
+            return ""
+        contacts = []
+        for item in self.SUPPORT_USERNAME.replace(";", ",").split(","):
+            username = item.strip().lstrip("@")
+            if username:
+                contacts.append(f"@{username}")
+        return ", ".join(contacts)
+
 
 config = Settings()

@@ -119,8 +119,13 @@ async def cmd_help(message: Message):
     """Справка и контакты поддержки."""
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-    support_contact = config.SUPPORT_USERNAME.strip() if config.SUPPORT_USERNAME else ""
-    clean_username = support_contact.lstrip("@")
+    support_raw = config.SUPPORT_USERNAME.strip() if config.SUPPORT_USERNAME else ""
+    contacts = []
+    if support_raw:
+        for item in support_raw.replace(";", ",").split(","):
+            u = item.strip().lstrip("@")
+            if u:
+                contacts.append(u)
 
     text = (
         "💬 <b>Служба заботы и поддержки</b>\n\n"
@@ -129,13 +134,14 @@ async def cmd_help(message: Message):
     )
 
     reply_markup = None
-    if clean_username:
-        text += f"• Для связи напишите организаторам курса: @{clean_username}\n"
-        reply_markup = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="💬 Написать организаторам", url=f"https://t.me/{clean_username}")]
-            ]
-        )
+    if contacts:
+        formatted = ", ".join(f"@{c}" for c in contacts)
+        text += f"• Для связи напишите организаторам курса: {formatted}\n"
+        buttons = []
+        for c in contacts:
+            btn_title = f"💬 Написать @{c}" if len(contacts) > 1 else "💬 Написать организаторам"
+            buttons.append([InlineKeyboardButton(text=btn_title, url=f"https://t.me/{c}")])
+        reply_markup = InlineKeyboardMarkup(inline_keyboard=buttons)
     else:
         text += "• Для связи напишите организаторам курса.\n"
 

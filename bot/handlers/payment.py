@@ -31,11 +31,11 @@ router = Router()
 
 def get_support_payment_note() -> str:
     """Текст заботы с контактом куратора для вопросов по оплате и программе."""
-    clean_sup = config.SUPPORT_USERNAME.strip().lstrip("@") if config.SUPPORT_USERNAME else ""
-    if clean_sup:
+    sup = config.formatted_support
+    if sup:
         return (
             f"\n\n💬 <i>Возникли вопросы по оплате, счёт для юрлица или вопросы по программе? "
-            f"Напишите нашему куратору @{clean_sup}, и мы с радостью поможем!</i>"
+            f"Напишите нашему куратору {sup}, и мы с радостью поможем!</i>"
         )
     return ""
 
@@ -205,10 +205,10 @@ async def buy_tariff(callback: CallbackQuery, bot: Bot):
 
 async def send_tariff_invoice(bot: Bot, chat_id: int, user, tariff):
     """Единая функция создания заказа и отправки инвойса ЮKassa с фискализацией 54-ФЗ."""
-    clean_sup = config.SUPPORT_USERNAME.strip().lstrip("@") if config.SUPPORT_USERNAME else ""
+    sup = config.formatted_support
 
     if not config.PAYMENT_PROVIDER_TOKEN or "YOUR_" in config.PAYMENT_PROVIDER_TOKEN:
-        care = f" Напишите нашему куратору: @{clean_sup}" if clean_sup else ""
+        care = f" Напишите нашему куратору: {sup}" if sup else ""
         await bot.send_message(
             chat_id=chat_id,
             text=(
@@ -277,18 +277,18 @@ async def send_tariff_invoice(bot: Bot, chat_id: int, user, tariff):
             start_parameter=f"pay_tariff_{tariff.id}",
             provider_data=json.dumps(receipt_data)
         )
-        if clean_sup:
+        if sup:
             await bot.send_message(
                 chat_id=chat_id,
                 text=(
                     f"💬 <i>Если при оплате картой возникнут трудности или вам удобен другой способ расчёта (перевод, СБП, счёт) — "
-                    f"напишите нашему куратору @{clean_sup}, мы с радостью поможем завершить оформление вручную!</i>"
+                    f"напишите нашему куратору {sup}, мы с радостью поможем завершить оформление вручную!</i>"
                 ),
                 parse_mode="HTML"
             )
     except Exception as e:
         logger.exception("Ошибка при отправке инвойса ЮKassa: %s", e)
-        care = f" Напишите нашему куратору: @{clean_sup}" if clean_sup else ""
+        care = f" Напишите нашему куратору: {sup}" if sup else ""
         await bot.send_message(
             chat_id=chat_id,
             text=(

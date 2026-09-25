@@ -21,11 +21,11 @@ EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 
 def get_care_support_text() -> str:
     """Вежливый текст заботы с контактом администратора."""
-    clean = config.SUPPORT_USERNAME.strip().lstrip("@") if config.SUPPORT_USERNAME else ""
-    if clean:
+    sup = config.formatted_support
+    if sup:
         return (
             f"\n\n💬 <i>Если у вас возникли сложности или что-то не получается — не переживайте! "
-            f"Вы всегда можете написать нашему куратору @{clean}, и мы поможем вам подключить доступ в ручном режиме.</i>"
+            f"Вы всегда можете написать нашему куратору {sup}, и мы поможем вам подключить доступ в ручном режиме.</i>"
         )
     return ""
 
@@ -246,12 +246,12 @@ async def process_email(message: Message, state: FSMContext):
     await message.answer(success_text, reply_markup=get_main_menu_keyboard(is_registered=True), parse_mode="HTML")
 
     if main_tariff:
-        clean_sup = config.SUPPORT_USERNAME.strip().lstrip("@") if config.SUPPORT_USERNAME else ""
+        sup = config.formatted_support
         sup_note = ""
-        if clean_sup:
+        if sup:
             sup_note = (
                 f"\n\n💬 <i>Возникли вопросы по оплате, счёт для юрлица или вопросы по программе? "
-                f"Напишите нашему куратору @{clean_sup}, и мы с радостью поможем!</i>"
+                f"Напишите нашему куратору {sup}, и мы с радостью поможем!</i>"
             )
 
         text = f"Стоимость осеннего канала {main_tariff.price_rub} руб , продолжительность 2 месяца   :{sup_note}"
